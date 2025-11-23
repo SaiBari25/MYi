@@ -15,11 +15,26 @@ video {
 }
 
 #log {
-  height: 150px;
+  min-height: 150px;
   overflow: auto;
   background: #0b5284;
   padding: 10px;
   margin-top: 10px;
-  font-size: 12px;
+  font-size: 14px;
+  color: #fff;
+  border-radius: 4px;
+  outline: none;
 }
 
+/* Add a visible focus border for accessibility */
+#log:focus {
+  border: 2px solid #ffee58;
+}
+
+/* Optional debug image styling */
+#debug_img {
+  margin: 10px 0;
+  background: #fff;
+  border: 2px solid #0b5284;
+  border-radius: 4px;
+}
