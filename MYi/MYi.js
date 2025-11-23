@@ -1,18 +1,21 @@
 // Copyright (c) 2025 SaiBari25. All rights reserved.
 
-const log = (m) => { 
-  document.getElementById('log').innerHTML += m + "<br>"; 
-};
-
+// GLOBALS
 let recognition;
 let stage = "idle";
 let isBusy = false;
 let stopReading = false;
 
-// Start Microphone
+function log(m) {
+  const logDiv = document.getElementById('log');
+  logDiv.innerHTML += m + "<br>";
+  logDiv.scrollTop = logDiv.scrollHeight;
+}
+
+// Start Microphone for Voice Commands
 function startMic() {
   const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
-  if (!SR) { log("NO RECOGNITION"); return; }
+  if (!SR) { log("NO RECOGNITION SUPPORT IN BROWSER."); return; }
 
   recognition = new SR();
   recognition.continuous = true;
@@ -26,17 +29,24 @@ function startMic() {
     handleVoice(t);
   };
 
-  recognition.onerror = (e) => log("REC ERROR: " + e.error);
-  recognition.onend = () => recognition.start();
+  recognition.onerror = (e) => {
+    log("Mic Error: " + e.error);
+    recognition.stop();
+    setTimeout(() => recognition.start(), 800); // restart after error
+  };
+
+  recognition.onend = () => setTimeout(() => recognition.start(), 500);
   recognition.start();
-  log("MIC STARTED");
+  log("Mic started");
 }
 
 // Text to Speech
 function speak(msg) {
   const u = new SpeechSynthesisUtterance(msg);
+  // accessibility: visual feedback in log
+  log("Speak: " + msg);
   speechSynthesis.speak(u);
-  return new Promise(r => { u.onend = r });
+  return new Promise(r => { u.onend = r; });
 }
 
 // Handle voice commands
@@ -45,22 +55,20 @@ async function handleVoice(t) {
     stopReading = true;
     await speak("Stopping reading.");
     speechSynthesis.cancel();
+    stage = "idle";
     return;
   }
-
   if (stage === "idle" && t.includes("hello i")) {
     stage = "wait_open";
     await speak("Say open camera");
     return;
   }
-
   if (stage === "wait_open" && (t.includes("open camera") || t.includes("open the camera"))) {
     await openCam();
     stage = "wait_read";
     await speak("Camera is ready. Say read it when you want me to read.");
     return;
   }
-
   if (stage === "wait_read" && (t.includes("read it") || t.includes("read"))) {
     await readNow();
     return;
@@ -71,28 +79,51 @@ async function handleVoice(t) {
 async function openCam() {
   try {
     const devices = await navigator.mediaDevices.enumerateDevices();
-    const backCam = devices.find(d =>
-      d.kind === "videoinput" && d.label.toLowerCase().includes("back")
-    );
-
+    let backCam = null;
+    // Prefer "back" camera or "environment"
+    for (const d of devices) {
+      if (d.kind === "videoinput" &&
+         (d.label.toLowerCase().includes("back") || d.label.toLowerCase().includes("environment"))) {
+        backCam = d;
+        break;
+      }
+    }
     const constraints = backCam
-      ? { video: { deviceId: backCam.deviceId, width: { ideal: 1920 }, height: { ideal: 1080 } } }
+      ? { video: { deviceId: { exact: backCam.deviceId }, width: { ideal: 1920 }, height: { ideal: 1080 } } }
       : { video: { facingMode: { ideal: "environment" }, width: { ideal: 1920 }, height: { ideal: 1080 } } };
 
     const stream = await navigator.mediaDevices.getUserMedia(constraints);
-
     const video = document.getElementById('video');
     video.srcObject = stream;
 
     await video.play();
-
     await speak("Camera is perfectly ready");
   } catch (e) {
-    log("CAM ERROR " + e);
+    log("Camera error: " + e.message);
+    await speak("Sorry, cannot open the camera. Please check permissions and device.");
   }
 }
 
-// Read (OCR)
+// Improve image contrast for OCR
+function enhanceContrast(ctx, width, height) {
+  // Simple grayscale and contrast: improves OCR
+  try {
+    const imageData = ctx.getImageData(0, 0, width, height);
+    let d = imageData.data;
+    for(let i=0;i<d.length;i+=4) {
+      let avg = (d[i]+d[i+1]+d[i+2])/3;
+      // Increase contrast: basic version
+      avg = avg > 128 ? 255 : 0;
+      d[i] = d[i+1] = d[i+2] = avg;
+    }
+    ctx.putImageData(imageData,0,0);
+  } catch(e){
+    // Fail silently if image data cannot be processed
+    log("Image enhancement error: " + e.message);
+  }
+}
+
+// Read (OCR) sequence
 async function readNow() {
   isBusy = true;
   stopReading = false;
@@ -100,16 +131,15 @@ async function readNow() {
   await speak("Hold still. Reading now.");
 
   const v = document.getElementById('video');
-
-  // Wait for video to have dimensions
+  // Wait until video is ready
   if (v.videoWidth === 0 || v.videoHeight === 0) {
-    await speak("Camera not ready yet. Try again.");
+    await speak("Camera not ready yet. Please try again.");
     isBusy = false;
     return;
   }
 
-  // Give autofocus time (critical)
-  await new Promise(r => setTimeout(r, 800));
+  // Wait longer for autofocus and stable image
+  await new Promise(r => setTimeout(r, 1500));
 
   // Freeze frame for clarity
   v.pause();
@@ -119,13 +149,20 @@ async function readNow() {
   c.height = v.videoHeight;
 
   const ctx = c.getContext('2d');
-  ctx.drawImage(v, 0, 0);
+  ctx.drawImage(v, 0, 0, c.width, c.height);
 
-  const img = c.toDataURL();
+  // Optional: Contrast enhancement for better text recognition
+  enhanceContrast(ctx, c.width, c.height);
+
+  // Preview for debugging
+  const img = c.toDataURL("image/png");
+  const debugImg = document.getElementById('debug_img');
+  debugImg.src = img;
+  debugImg.style.display = "block";
 
   try {
     const result = await Tesseract.recognize(img, 'eng', {
-      logger: (m) => log(m.status)
+      logger: (m) => m.status && log("[OCR] " + m.status)
     });
 
     const txt = result.data.text.trim();
@@ -134,15 +171,15 @@ async function readNow() {
     if (txt.length > 2) {
       await speak(txt);
     } else {
-      await speak("Nothing readable. Try again.");
+      await speak("No readable text found. Please try again in better light.");
     }
 
   } catch (e) {
-    log("OCR Error: " + e.message);
-    await speak("An error occurred during OCR.");
+    log("OCR error: " + e.message);
+    await speak("An error occurred during text reading. Please retry.");
   }
 
-  // Resume camera
+  // Resume camera for next read
   v.play();
 
   isBusy = false;
