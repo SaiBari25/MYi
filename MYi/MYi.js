@@ -1,11 +1,13 @@
 // Copyright (c) 2025 SaiBari25. All rights reserved.
 
-const log = (m) => { document.getElementById('log').innerHTML += m + "<br>" }
+const log = (m) => { 
+  document.getElementById('log').innerHTML += m + "<br>"; 
+};
 
 let recognition;
-let stage = "idle"; // idle → wait_open → wait_read
+let stage = "idle";
 let isBusy = false;
-let stopReading = false;  // Flag to stop reading when "stop" is said
+let stopReading = false;
 
 // Start Microphone
 function startMic() {
@@ -37,13 +39,12 @@ function speak(msg) {
   return new Promise(r => { u.onend = r });
 }
 
-// Handle User Voice Commands
+// Handle voice commands
 async function handleVoice(t) {
-  // If "stop" command is detected, stop the OCR and reading
   if (t.includes("stop") && !stopReading) {
     stopReading = true;
     await speak("Stopping reading.");
-    speechSynthesis.cancel();  // Cancel current speech
+    speechSynthesis.cancel();
     return;
   }
 
@@ -53,10 +54,10 @@ async function handleVoice(t) {
     return;
   }
 
-  if (stage === "wait_open" && t.includes("open camera") || t.includes("open the camera")) {
+  if (stage === "wait_open" && (t.includes("open camera") || t.includes("open the camera"))) {
     await openCam();
     stage = "wait_read";
-    await speak("Camera is perfectly ready. Say read it when you want me to read.");
+    await speak("Camera is ready. Say read it when you want me to read.");
     return;
   }
 
@@ -66,64 +67,85 @@ async function handleVoice(t) {
   }
 }
 
-// Open Camera
+// Open the back camera in HD
 async function openCam() {
   try {
     const devices = await navigator.mediaDevices.enumerateDevices();
-    const backCam = devices.find(d => 
+    const backCam = devices.find(d =>
       d.kind === "videoinput" && d.label.toLowerCase().includes("back")
     );
 
     const constraints = backCam
-      ? { video: { deviceId: backCam.deviceId }, audio: false }
-      : { video: { facingMode: { ideal: "environment" } }, audio: false };
+      ? { video: { deviceId: backCam.deviceId, width: { ideal: 1920 }, height: { ideal: 1080 } } }
+      : { video: { facingMode: { ideal: "environment" }, width: { ideal: 1920 }, height: { ideal: 1080 } } };
 
     const stream = await navigator.mediaDevices.getUserMedia(constraints);
-    document.getElementById("video").srcObject = stream;
+
+    const video = document.getElementById('video');
+    video.srcObject = stream;
+
+    await video.play();
 
     await speak("Camera is perfectly ready");
-  } catch (err) {
-    log("CAM ERROR " + err);
+  } catch (e) {
+    log("CAM ERROR " + e);
   }
 }
 
-
-// OCR Text Recognition
+// Read (OCR)
 async function readNow() {
   isBusy = true;
-  stopReading = false;  // Reset the flag when reading starts
-  await speak("Hold still, reading now.");
+  stopReading = false;
+
+  await speak("Hold still. Reading now.");
 
   const v = document.getElementById('video');
+
+  // Wait for video to have dimensions
+  if (v.videoWidth === 0 || v.videoHeight === 0) {
+    await speak("Camera not ready yet. Try again.");
+    isBusy = false;
+    return;
+  }
+
+  // Give autofocus time (critical)
+  await new Promise(r => setTimeout(r, 800));
+
+  // Freeze frame for clarity
+  v.pause();
+
   const c = document.getElementById('canvas');
   c.width = v.videoWidth;
   c.height = v.videoHeight;
-  c.getContext('2d').drawImage(v, 0, 0);
 
-  // Convert the image to a data URL for OCR
+  const ctx = c.getContext('2d');
+  ctx.drawImage(v, 0, 0);
+
   const img = c.toDataURL();
 
   try {
     const result = await Tesseract.recognize(img, 'eng', {
-      logger: (m) => { log(m.status); }
+      logger: (m) => log(m.status)
     });
 
     const txt = result.data.text.trim();
-    log('OCR: ' + txt);
+    log("OCR: " + txt);
 
-    if (txt && txt.length > 0) {
+    if (txt.length > 2) {
       await speak(txt);
     } else {
-      await speak('Nothing readable. Try again.');
+      await speak("Nothing readable. Try again.");
     }
+
   } catch (e) {
-    log('OCR Error: ' + e.message);
-    await speak('An error occurred during OCR.');
+    log("OCR Error: " + e.message);
+    await speak("An error occurred during OCR.");
   }
+
+  // Resume camera
+  v.play();
 
   isBusy = false;
 }
 
 startMic();
-
-
