@@ -69,11 +69,24 @@ async function handleVoice(t) {
 // Open Camera
 async function openCam() {
   try {
-    const s = await navigator.mediaDevices.getUserMedia({ video: true });
-    document.getElementById('video').srcObject = s;
-    await speak('Camera is perfectly ready');
-  } catch (e) { log('CAM ERROR ' + e); }
+    const devices = await navigator.mediaDevices.enumerateDevices();
+    const backCam = devices.find(d => 
+      d.kind === "videoinput" && d.label.toLowerCase().includes("back")
+    );
+
+    const constraints = backCam
+      ? { video: { deviceId: backCam.deviceId }, audio: false }
+      : { video: { facingMode: { ideal: "environment" } }, audio: false };
+
+    const stream = await navigator.mediaDevices.getUserMedia(constraints);
+    document.getElementById("video").srcObject = stream;
+
+    await speak("Camera is perfectly ready");
+  } catch (err) {
+    log("CAM ERROR " + err);
+  }
 }
+
 
 // OCR Text Recognition
 async function readNow() {
@@ -112,4 +125,5 @@ async function readNow() {
 }
 
 startMic();
+
 
