@@ -10,8 +10,6 @@ All rights reserved.
   <title>MYi</title>
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <script src="https://cdn.jsdelivr.net/npm/tesseract.js@4/dist/tesseract.min.js"></script>
-
-  <!-- LINKED CSS -->
   <link rel="stylesheet" href="MYi.css" />
 </head>
 <body>
@@ -21,11 +19,11 @@ All rights reserved.
 <video id="video" autoplay playsinline muted></video>
 <canvas id="canvas" style="display:none"></canvas>
 
-<div id="log"></div>
+<!-- Optional: Preview captured frame for debugging OCR accuracy -->
+<img id="debug_img" alt="Captured for OCR" style="display:none;max-width:100%;border:2px solid #333;"/>
+<!-- Accessibility live log region for screen readers -->
+<div id="log" aria-live="assertive"></div>
 
-<!-- LINKED JS -->
 <script src="MYi.js"></script>
-
 </body>
 </html>
-
