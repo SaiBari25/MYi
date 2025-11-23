@@ -1,3 +1,5 @@
+// Copyright (c) 2025 SaiBari25. All rights reserved.
+
 const log = (m) => { document.getElementById('log').innerHTML += m + "<br>" }
 
 let recognition;
@@ -110,3 +112,4 @@ async function readNow() {
 }
 
 startMic();
+
